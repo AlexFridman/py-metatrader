@@ -4,13 +4,14 @@ Created on 2015/01/25
 
 @author: samuraitaiga
 '''
-import logging
 import os
-from mt4 import get_mt4
-from mt4 import DEFAULT_MT4_NAME
-from __builtin__ import str
+import shutil
 
-class BackTest(object):
+from metatrader.mt5 import DEFAULT_MT5_NAME
+from metatrader.mt5 import get_mt5
+
+
+class BackTest:
     """
     Attributes:
       ea_name(string): ea name
@@ -27,18 +28,24 @@ class BackTest(object):
       replace_report(bool): replace report flag. replace report is enabled if True
 
     """
-    def __init__(self, ea_name, param, symbol, period, from_date, to_date, model=0, spread=5, replace_repot=True):
+
+    def __init__(self, test_dir, ea_name, param, symbol, period, deposit, from_date, to_date, model=0, spread=5,
+                 forward_mode=0, execution_mode=1, replace_repot=True):
+        self.test_dir = test_dir
         self.ea_name = ea_name
         self.param = param
         self.symbol = symbol
         self.period = period
+        self.forward_mode = forward_mode
+        self.execution_mode = execution_mode
+        self.deposit = deposit
         self.from_date = from_date
         self.to_date = to_date
         self.model = model
         self.spread = spread
         self.replace_report = replace_repot
 
-    def _prepare(self, alias=DEFAULT_MT4_NAME):
+    def _prepare(self, alias=DEFAULT_MT5_NAME):
         """
         Notes:
           create backtest config file and parameter file
@@ -46,10 +53,10 @@ class BackTest(object):
         self._create_conf(alias=alias)
         self._create_param(alias=alias)
 
-    def _create_conf(self, alias=DEFAULT_MT4_NAME):
+    def _create_conf(self, alias=DEFAULT_MT5_NAME):
         """
         Notes:
-          create config file(.conf) which is used parameter of terminal.exe
+          create config file(.conf) which is used parameter of terminal64.exe
           in %APPDATA%\\MetaQuotes\\Terminal\\<UUID>\\tester
           
           file contents goes to 
@@ -68,39 +75,37 @@ class BackTest(object):
             TestShutdownTerminal=true
         """
 
-        mt4 = get_mt4(alias=alias)
-        conf_file = os.path.join(mt4.appdata_path, 'tester', '%s.conf' % self.ea_name)
+        mt5 = get_mt5(alias)
+        conf_file = os.path.join(self.test_dir, 'config.ini')
+        report_dir = os.path.join(mt5.appdata_path, 'report')
+        os.makedirs(report_dir, exist_ok=True)
 
-        # shutdown_terminal must be True.
-        # If false, popen don't end and backtest report analyze don't start.
-        shutdown_terminal = True
+        with open(conf_file, 'w+') as fp:
+            fp.write('[Tester]\n')
+            fp.write('Expert=%s\n' % self.ea_name)
+            fp.write('ExpertParameters=%s\n' % os.path.join(self.test_dir, 'param.set'))
+            fp.write('Symbol=%s\n' % self.symbol)
+            fp.write('Model=%s\n' % self.model)
+            fp.write('Deposit=%s\n' % self.deposit)
+            fp.write('ForwardMode=%s\n' % self.forward_mode)
+            fp.write('ExecutionMode=%s\n' % self.execution_mode)
+            fp.write('Period=%s\n' % self.period)
+            fp.write('FromDate=%s\n' % self.from_date.strftime('%Y.%m.%d'))
+            fp.write('ToDate=%s\n' % self.to_date.strftime('%Y.%m.%d'))
+            fp.write('Report=%s\n' % 'report/report')
+            fp.write('ReplaceReport=%s\n' % int(self.replace_report))
+            fp.write('ShutdownTerminal=1\n')
 
-        with open(conf_file, 'w') as fp:
-            fp.write('TestExpert=%s\n' % self.ea_name)
-            fp.write('TestExpertParameters=%s.set\n' % self.ea_name)
-            fp.write('TestSymbol=%s\n' % self.symbol)
-            fp.write('TestModel=%s\n' % self.model)
-            fp.write('TestPeriod=%s\n' % self.period)
-            fp.write('TestSpread=%s\n' % self.spread)
-            fp.write('TestOptimization=%s\n' % str(self.optimization).lower())
-            fp.write('TestDateEnable=true\n')
-            fp.write('TestFromDate=%s\n' % self.from_date.strftime('%Y.%m.%d'))
-            fp.write('TestToDate=%s\n' % self.to_date.strftime('%Y.%m.%d'))
-            fp.write('TestReport=%s\n' % self.ea_name)
-            fp.write('TestReplaceReport=%s\n' % str(self.replace_report).lower())
-            fp.write('TestShutdownTerminal=%s\n' % str(shutdown_terminal).lower())
-
-    def _create_param(self, alias=DEFAULT_MT4_NAME):
+    def _create_param(self, alias=DEFAULT_MT5_NAME):
         """
         Notes:
           create ea parameter file(.set) in %APPDATA%\\MetaQuotes\\Terminal\\<UUID>\\tester
         Args:
           ea_name(string): ea name
         """
-        mt4 = get_mt4(alias=alias)
-        param_file = os.path.join(mt4.appdata_path, 'tester', '%s.set' % self.ea_name)
+        param_file = os.path.join(self.test_dir, 'param.set')
 
-        with open(param_file, 'w') as fp:
+        with open(param_file, 'w+') as fp:
             for k in self.param:
                 values = self.param[k].copy()
                 value = values.pop('value')
@@ -110,9 +115,9 @@ class BackTest(object):
                         fp.write('%s,F=1\n' % k)
                         fp.write('%s,1=%s\n' % (k, value))
                         interval = values.pop('interval')
-                        fp.write('%s,2=%s\n' % (k,interval))
+                        fp.write('%s,2=%s\n' % (k, interval))
                         maximum = values.pop('max')
-                        fp.write('%s,3=%s\n' % (k,maximum))
+                        fp.write('%s,3=%s\n' % (k, maximum))
                     else:
                         # if this value won't be optimized, write unused dummy data for same format.
                         fp.write('%s,F=0\n' % k)
@@ -130,45 +135,51 @@ class BackTest(object):
                         fp.write('%s,2=0\n' % k)
                         fp.write('%s,3=0\n' % k)
 
-
-    def _get_conf_abs_path(self, alias=DEFAULT_MT4_NAME):
-        mt4 = get_mt4(alias=alias)
-        conf_file = os.path.join(mt4.appdata_path, 'tester', '%s.conf' % self.ea_name)
+    def _get_conf_abs_path(self, alias=DEFAULT_MT5_NAME):
+        conf_file = os.path.join(self.test_dir, 'config.ini')
         return conf_file
 
-    def run(self, alias=DEFAULT_MT4_NAME):
+    def move_and_fix_report(self, alias=DEFAULT_MT5_NAME):
+        mt5 = get_mt5(alias)
+        src_report_dir = os.path.join(mt5.appdata_path, 'report')
+        dst_report_dir = os.path.join(self.test_dir, 'report')
+        shutil.rmtree(dst_report_dir, ignore_errors=True)
+        shutil.move(src_report_dir, self.test_dir)
+        content_dir = os.path.join(dst_report_dir, 'report')
+        os.makedirs(content_dir)
+
+        for file_name in os.listdir(dst_report_dir):
+            if file_name.endswith('.png'):
+                src_file_path = os.path.join(dst_report_dir, file_name)
+                dst_file_path = os.path.join(content_dir, file_name)
+                shutil.move(src_file_path, dst_file_path)
+
+    def run(self, alias=DEFAULT_MT5_NAME):
         """
         Notes:
           run backtest
         """
-        from report import BacktestReport
 
         self.optimization = False
 
         self._prepare(alias=alias)
         bt_conf = self._get_conf_abs_path(alias=alias)
-    
-        mt4 = get_mt4(alias=alias)
-        mt4.run(self.ea_name, conf=bt_conf)
-    
-        ret = BacktestReport(self)
-        return ret
 
-    def optimize(self, alias=DEFAULT_MT4_NAME):
+        mt5 = get_mt5(alias=alias)
+        mt5.run(conf=bt_conf)
+        self.move_and_fix_report()
+
+    def optimize(self, alias=DEFAULT_MT5_NAME):
         """
         """
-        from report import OptimizationReport
+        from metatrader.report import OptimizationReport
 
         self.optimization = True
         self._prepare(alias=alias)
         bt_conf = self._get_conf_abs_path(alias=alias)
-    
-        mt4 = get_mt4(alias=alias)
-        mt4.run(self.ea_name, conf=bt_conf)
-        
+
+        mt5 = get_mt5(alias=alias)
+        mt5.run(conf=bt_conf)
+
         ret = OptimizationReport(self)
         return ret
-
-
-def load_from_file(dsl_file):
-    pass

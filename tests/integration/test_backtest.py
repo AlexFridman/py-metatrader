@@ -4,7 +4,7 @@ Created on 2015/04/15
 @author: Taiga
 '''
 
-from metatrader.mt4 import initizalize
+from metatrader.mt5 import initizalize
 from metatrader.backtest import BackTest
 from datetime import datetime
 import logging
