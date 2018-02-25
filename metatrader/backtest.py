@@ -29,8 +29,8 @@ class BackTest:
 
     """
 
-    def __init__(self, test_dir, ea_name, param, symbol, period, deposit, from_date, to_date, model=0, spread=5,
-                 forward_mode=0, execution_mode=1, replace_repot=True):
+    def __init__(self, test_dir, ea_name, param, symbol, period, deposit, from_date, to_date, model=1, spread=5,
+                 forward_mode=0, execution_mode=1, replace_report=True, leverage='1:100'):
         self.test_dir = test_dir
         self.ea_name = ea_name
         self.param = param
@@ -43,7 +43,8 @@ class BackTest:
         self.to_date = to_date
         self.model = model
         self.spread = spread
-        self.replace_report = replace_repot
+        self.replace_report = replace_report
+        self.leverage = leverage
 
     def _prepare(self, alias=DEFAULT_MT5_NAME):
         """
@@ -83,7 +84,7 @@ class BackTest:
         with open(conf_file, 'w+') as fp:
             fp.write('[Tester]\n')
             fp.write('Expert=%s\n' % self.ea_name)
-            fp.write('ExpertParameters=%s\n' % os.path.join(self.test_dir, 'param.set'))
+            fp.write('ExpertParameters=%s\n' % 'param.set')
             fp.write('Symbol=%s\n' % self.symbol)
             fp.write('Model=%s\n' % self.model)
             fp.write('Deposit=%s\n' % self.deposit)
@@ -93,6 +94,7 @@ class BackTest:
             fp.write('FromDate=%s\n' % self.from_date.strftime('%Y.%m.%d'))
             fp.write('ToDate=%s\n' % self.to_date.strftime('%Y.%m.%d'))
             fp.write('Report=%s\n' % 'report/report')
+            fp.write('Leverage=%s\n' % self.leverage)
             fp.write('ReplaceReport=%s\n' % int(self.replace_report))
             fp.write('ShutdownTerminal=1\n')
 
@@ -134,6 +136,10 @@ class BackTest:
                         fp.write('%s,1=0\n' % k)
                         fp.write('%s,2=0\n' % k)
                         fp.write('%s,3=0\n' % k)
+
+        mt5 = get_mt5(alias)
+        real_param_path = os.path.join(mt5.appdata_path, 'MQL5\\Profiles\\Tester', 'param.set')
+        shutil.copy(param_file, real_param_path)
 
     def _get_conf_abs_path(self, alias=DEFAULT_MT5_NAME):
         conf_file = os.path.join(self.test_dir, 'config.ini')
