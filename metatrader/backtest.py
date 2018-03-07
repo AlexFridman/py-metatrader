@@ -6,6 +6,7 @@ Created on 2015/01/25
 '''
 import os
 import shutil
+from itertools import chain
 
 from metatrader.mt5 import DEFAULT_MT5_NAME
 from metatrader.mt5 import get_mt5
@@ -30,7 +31,7 @@ class BackTest:
     """
 
     def __init__(self, test_dir, ea_name, param, symbol, period, deposit, from_date, to_date, model=1, spread=5,
-                 forward_mode=0, execution_mode=1, replace_report=True, leverage='1:100'):
+                 forward_mode=0, execution_mode=1, replace_report=True, leverage='1:100', shutdown_terminal=True):
         self.test_dir = test_dir
         self.ea_name = ea_name
         self.param = param
@@ -45,6 +46,7 @@ class BackTest:
         self.spread = spread
         self.replace_report = replace_report
         self.leverage = leverage
+        self.shutdown_terminal = shutdown_terminal
 
     def _prepare(self, alias=DEFAULT_MT5_NAME):
         """
@@ -96,7 +98,7 @@ class BackTest:
             fp.write('Report=%s\n' % 'report/report')
             fp.write('Leverage=%s\n' % self.leverage)
             fp.write('ReplaceReport=%s\n' % int(self.replace_report))
-            fp.write('ShutdownTerminal=1\n')
+            fp.write('ShutdownTerminal=%s\n' % int(self.shutdown_terminal))
 
     def _create_param(self, alias=DEFAULT_MT5_NAME):
         """
@@ -106,10 +108,11 @@ class BackTest:
           ea_name(string): ea name
         """
         param_file = os.path.join(self.test_dir, 'param.set')
+        param = chain.from_iterable((self.param.items(), (('Inp_Expert_Title', {'value': self.ea_name}),)))
 
         with open(param_file, 'w+') as fp:
-            for k in self.param:
-                values = self.param[k].copy()
+            for k, values in param:
+                values = values.copy()
                 value = values.pop('value')
                 fp.write('%s=%s\n' % (k, value))
                 if self.optimization:
